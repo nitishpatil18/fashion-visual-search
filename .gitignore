@@ -1,0 +1,29 @@
+# python
+venv/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# node
+node_modules/
+dist/
+build/
+
+# data and models
+ml-service/data/raw/
+ml-service/data/cached/
+ml-service/models/
+*.npy
+*.pkl
+*.faiss
+
+# env
+.env
+.env.local
+*.key
+kaggle.json
+
+# os
+.DS_Store
+.vscode/
+.idea/
