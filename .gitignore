@@ -8,6 +8,8 @@ __pycache__/
 node_modules/
 dist/
 build/
+.vite/
+*.log
 
 # data and models
 ml-service/data/raw/
@@ -15,6 +17,7 @@ ml-service/data/cached/
 ml-service/models/
 *.npy
 *.pkl
+*.parquet
 *.faiss
 
 # env
