@@ -6,7 +6,6 @@ import io
 import time
 from pathlib import Path
 
-# lightgbm MUST be imported before torch on macos arm64 to avoid libomp segfault
 import lightgbm as lgb
 
 import numpy as np
@@ -20,6 +19,9 @@ from pydantic import BaseModel
 from transformers import CLIPModel, CLIPProcessor
 
 from src.train import ProjectionHead, EMB_DIM, HIDDEN_DIM, PROJ_DIM
+
+# avoid openmp deadlock between lightgbm, torch, and faiss in the same process
+torch.set_num_threads(1)
 
 ML_DIR = Path(__file__).resolve().parent.parent
 CACHE = ML_DIR / "data" / "cached"
@@ -61,9 +63,12 @@ img_emb_raw = np.load(CACHE / "clip_image_embeddings.npy").astype(np.float32)
 img_ids = np.load(CACHE / "clip_image_ids.npy")
 id_to_idx = {int(v): k for k, v in enumerate(img_ids)}
 
-print("[startup] loading clip model...")
+print("[startup] loading clip model (mps for text)...")
 clip_model = CLIPModel.from_pretrained(MODEL_NAME).to(DEVICE).eval()
 clip_processor = CLIPProcessor.from_pretrained(MODEL_NAME)
+
+print("[startup] loading clip model (cpu for image, workaround for mps hang)...")
+clip_model_cpu = CLIPModel.from_pretrained(MODEL_NAME).to("cpu").eval()
 
 print("[startup] loading projection heads...")
 ckpt = torch.load(MODELS / "best_heads.pt", map_location=DEVICE, weights_only=True)
@@ -98,13 +103,16 @@ def encode_text(query: str) -> np.ndarray:
 
 @torch.no_grad()
 def encode_image(pil_image: Image.Image) -> np.ndarray:
-    inputs = clip_processor(images=pil_image.convert("RGB"), return_tensors="pt")
-    inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
-    vout = clip_model.vision_model(pixel_values=inputs["pixel_values"])
-    feat = clip_model.visual_projection(vout.pooler_output)
+    pil_image = pil_image.convert("RGB").resize((224, 224), Image.BICUBIC)
+    inputs = clip_processor(images=pil_image, return_tensors="pt")
+    pixel_values = inputs["pixel_values"]  # already cpu
+    vout = clip_model_cpu.vision_model(pixel_values=pixel_values)
+    feat = clip_model_cpu.visual_projection(vout.pooler_output)
     feat = feat / feat.norm(dim=-1, keepdim=True)
-    projected = img_head(feat)
-    return feat.cpu().numpy()[0], projected.cpu().numpy()[0]
+    # raw feat is cpu; project through mps head
+    feat_dev = feat.to(DEVICE)
+    projected = img_head(feat_dev)
+    return feat.numpy()[0], projected.cpu().numpy()[0]
 
 
 def build_features(q_meta, raw_query_vec, proj_query_vec, candidate_ids):
@@ -245,19 +253,27 @@ def search_text(q: str, top_k: int = DEFAULT_TOP_K, rerank: bool = True):
 
 
 @app.post("/search/image", response_model=SearchResponse)
-async def search_image(image: UploadFile = File(...), top_k: int = Form(DEFAULT_TOP_K), rerank: bool = Form(True)):
+def search_image(image: UploadFile = File(...), top_k: int = Form(DEFAULT_TOP_K), rerank: bool = Form(True)):
+    print(f"[image] handler entered. filename={image.filename}, top_k={top_k}, rerank={rerank}", flush=True)
     if top_k <= 0 or top_k > 100:
         raise HTTPException(400, "top_k must be 1..100")
     try:
-        contents = await image.read()
+        print("[image] reading file...", flush=True)
+        contents = image.file.read()
+        print(f"[image] read {len(contents)} bytes", flush=True)
         pil_img = Image.open(io.BytesIO(contents))
+        print(f"[image] pil opened: {pil_img.size}", flush=True)
     except Exception as e:
+        print(f"[image] read failed: {e}", flush=True)
         raise HTTPException(400, f"cannot read image: {e}")
 
     t0 = time.perf_counter()
+    print("[image] encoding...", flush=True)
     raw_vec, proj_vec = encode_image(pil_img)
-    q_meta = {"caption": ""}  # no caption from raw image
+    print("[image] encoded, searching...", flush=True)
+    q_meta = {"caption": ""}
     results = search_with_projected_vec(proj_vec, raw_vec, q_meta, top_k, rerank=rerank)
+    print(f"[image] done, {len(results)} results", flush=True)
     dt = (time.perf_counter() - t0) * 1000
 
     return SearchResponse(
