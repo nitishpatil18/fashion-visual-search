@@ -28,6 +28,58 @@ function useTheme() {
   return [theme, setTheme];
 }
 
+function useKeyboardShortcuts({ onFocusSearch, onClearSearch, onToggleRerank, onToggleCompare, onToggleInspect, onShowHelp }) {
+  useEffect(() => {
+    const isTyping = (e) => {
+      const t = e.target;
+      if (!t) return false;
+      const tag = t.tagName;
+      return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
+    };
+
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        onFocusSearch();
+        return;
+      }
+      if (e.key === "Escape" && isTyping(e)) {
+        const t = e.target;
+        if (t.tagName === "INPUT" && t.type === "text") {
+          onClearSearch();
+          t.blur();
+        }
+        return;
+      }
+      if (isTyping(e)) return;
+
+      switch (e.key) {
+        case "/":
+          e.preventDefault();
+          onFocusSearch();
+          break;
+        case "r":
+          onToggleRerank();
+          break;
+        case "c":
+          onToggleCompare();
+          break;
+        case "i":
+          onToggleInspect();
+          break;
+        case "?":
+          onShowHelp();
+          break;
+        default:
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onFocusSearch, onClearSearch, onToggleRerank, onToggleCompare, onToggleInspect, onShowHelp]);
+}
+
 function ThemeToggle({ theme, setTheme }) {
   const options = [
     { v: "light", label: "light" },
@@ -334,8 +386,53 @@ function FilterBar({ results, filters, setFilters, filteredCount }) {
   );
 }
 
+function ShortcutsHelp({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    const onEsc = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onEsc);
+    return () => window.removeEventListener("keydown", onEsc);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  const rows = [
+    ["/", "focus search"],
+    ["⌘ K  / Ctrl K", "focus search"],
+    ["Esc", "clear and unfocus search"],
+    ["R", "toggle rerank"],
+    ["C", "toggle compare rerank view"],
+    ["I", "toggle ml inspector"],
+    ["?", "show this dialog"],
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div
+        className="relative bg-card border border-strong rounded-lg w-full max-w-md overflow-hidden card-fade-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="px-4 py-2.5 border-b border-app flex items-center justify-between">
+          <div className="text-[11px] uppercase tracking-wider text-subtle">keyboard shortcuts</div>
+          <button onClick={onClose} className="text-[11px] text-muted hover:text-app">close</button>
+        </div>
+        <div className="p-4 space-y-2">
+          {rows.map(([key, desc]) => (
+            <div key={key} className="flex items-center justify-between text-[12px]">
+              <span className="text-muted">{desc}</span>
+              <kbd className="bg-elev border border-app rounded px-2 py-0.5 text-[11px] font-mono text-app">{key}</kbd>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [theme, setTheme] = useTheme();
+  const [showHelp, setShowHelp] = useState(false);
+  const searchInputRef = useRef(null);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState([]);
   const [mode, setMode] = useState(null);
@@ -412,6 +509,15 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspectMode]);
 
+  useKeyboardShortcuts({
+    onFocusSearch: () => searchInputRef.current?.focus(),
+    onClearSearch: () => setQuery(""),
+    onToggleRerank: () => setRerank((r) => !r),
+    onToggleCompare: () => setCompareMode((s) => !s),
+    onToggleInspect: () => setInspectMode((s) => !s),
+    onShowHelp: () => setShowHelp(true),
+  });
+
   const sparse = filteredResults.length > 0 && filteredResults.length < Math.min(5, results.length);
 
   return (
@@ -441,7 +547,7 @@ export default function App() {
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight">visual search over 44,419 fashion products</h1>
           <p className="text-sm text-muted max-w-xl mx-auto">type what you're looking for or upload a photo. retrieval is two-stage: faiss over fine-tuned clip embeddings, reranked by a learning-to-rank model.</p>
           <form onSubmit={(e) => { e.preventDefault(); runTextSearch(query); }} className="flex flex-col sm:flex-row gap-2 max-w-2xl mx-auto">
-            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="navy blue formal shirt for men" className="flex-1 bg-card border border-app rounded-md px-4 py-3 text-sm placeholder:text-subtle focus:outline-none focus:border-strong" />
+            <input ref={searchInputRef} type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="navy blue formal shirt for men" className="flex-1 bg-card border border-app rounded-md px-4 py-3 text-sm placeholder:text-subtle focus:outline-none focus:border-strong" />
             <button type="submit" disabled={loading} className="px-5 py-3 bg-accent text-accent-fg rounded-md text-sm font-medium hover:opacity-90 disabled:opacity-50 transition">search</button>
             <button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading} className="px-5 py-3 bg-card border border-app rounded-md text-sm font-medium hover:border-strong disabled:opacity-50 transition">upload image</button>
             <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) runImageSearch(f); }} />
@@ -550,10 +656,16 @@ export default function App() {
 
       <footer className="border-t border-app">
         <div className="max-w-6xl mx-auto px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 text-[11px] text-subtle">
-          <div>built with clip vit-b/32 · faiss flat ip index · lightgbm lambdarank · evaluated on 3,878 queries</div>
+          <div>
+            built with clip vit-b/32 · faiss flat ip index · lightgbm lambdarank · evaluated on 3,878 queries
+            <span className="ml-2 text-subtle">·</span>
+            <button onClick={() => setShowHelp(true)} className="ml-2 underline hover:text-app transition">keyboard shortcuts</button>
+          </div>
           <div><a href="https://github.com/nitishpatil18/fashion-visual-search" target="_blank" rel="noreferrer" className="hover:text-app transition">source</a></div>
         </div>
       </footer>
+
+      <ShortcutsHelp open={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   );
 }
