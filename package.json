@@ -1,0 +1,14 @@
+{
+  "name": "fashion-visual-search",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "ml": "cd ml-service && ./venv/bin/uvicorn src.api:app --port 8000",
+    "backend": "cd backend && npm run dev",
+    "frontend": "cd frontend && npm run dev",
+    "dev": "concurrently -n ml,backend,frontend -c magenta,cyan,green \"npm run ml\" \"npm run backend\" \"npm run frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
