@@ -176,28 +176,31 @@ def search_with_projected_vec(proj_vec, raw_vec, q_meta, top_k, rerank=True):
     # stage 1: faiss top-K candidates
     D, I = faiss_index.search(proj_vec.reshape(1, -1).astype(np.float32), TOP_K_CANDIDATES)
     cand_ids = [int(img_ids[i]) for i in I[0]]
+    cand_sims = [float(s) for s in D[0]]
+    # pre-rerank rank for every candidate (1-indexed)
+    pre_rank = {cid: i + 1 for i, cid in enumerate(cand_ids)}
 
     if not rerank:
-        # just return stage-1 results
-        ranked = list(zip(cand_ids, D[0].tolist()))[:top_k]
+        ranked = [(cid, sim, pre_rank[cid]) for cid, sim in zip(cand_ids, cand_sims)][:top_k]
     else:
         X, valid_ids = build_features(q_meta, raw_vec, proj_vec, cand_ids)
         if len(valid_ids) == 0:
             return []
         scores = booster.predict(X)
         order = np.argsort(-scores)
-        ranked = [(valid_ids[i], float(scores[i])) for i in order[:top_k]]
+        ranked = [(valid_ids[i], float(scores[i]), pre_rank[valid_ids[i]]) for i in order[:top_k]]
 
-    return [_build_result(cid, score) for cid, score in ranked]
+    return [_build_result(cid, score, pre) for cid, score, pre in ranked]
 
 
-def _build_result(cid: int, score: float):
+def _build_result(cid: int, score: float, pre_rank: int = None):
     c = meta_idx.loc[cid]
     if isinstance(c, pd.DataFrame):
         c = c.iloc[0]
     return {
         "id": int(cid),
         "score": float(score),
+        "pre_rank": int(pre_rank) if pre_rank is not None else None,
         "articleType": c["articleType"],
         "baseColour": c["baseColour"],
         "gender": c["gender"],
