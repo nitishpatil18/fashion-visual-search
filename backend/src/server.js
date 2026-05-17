@@ -75,6 +75,21 @@ app.post("/api/search/image", upload.single("image"), async (req, res) => {
   }
 });
 
+app.get("/api/search/explain", async (req, res) => {
+  const { q } = req.query;
+  if (!q) return res.status(400).json({ error: "missing query param q" });
+  try {
+    const r = await axios.get(`${ML_SERVICE}/search/explain`, {
+      params: { q },
+      timeout: 30000,
+    });
+    res.json(r.data);
+  } catch (e) {
+    console.error("explain failed:", e.message);
+    res.status(502).json({ error: "ml service error", detail: e.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`[backend] listening on http://localhost:${PORT}`);
   console.log(`[backend] proxying ml-service at ${ML_SERVICE}`);

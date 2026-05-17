@@ -192,6 +192,44 @@ def search_with_projected_vec(proj_vec, raw_vec, q_meta, top_k, rerank=True):
 
     return [_build_result(cid, score, pre) for cid, score, pre in ranked]
 
+def explain_text_search(proj_vec, raw_vec, q_meta, candidates_k=100):
+    """return diagnostics: top-100 candidates with all features and rerank scores."""
+    D, I = faiss_index.search(proj_vec.reshape(1, -1).astype(np.float32), candidates_k)
+    cand_ids = [int(img_ids[i]) for i in I[0]]
+    cand_sims_proj = [float(s) for s in D[0]]
+
+    X, valid_ids = build_features(q_meta, raw_vec, proj_vec, cand_ids)
+    if len(valid_ids) == 0:
+        return {"top100": [], "feature_importance": []}
+
+    scores = booster.predict(X)
+    order = np.argsort(-scores)
+
+    feature_names = FEATURE_COLS
+
+    top100 = []
+    for rank, idx in enumerate(order):
+        cid = valid_ids[idx]
+        feats = X[idx].tolist()
+        top100.append({
+            "id": cid,
+            "post_rank": rank + 1,
+            "pre_rank": cand_ids.index(cid) + 1,
+            "score": float(scores[idx]),
+            "features": {name: float(v) for name, v in zip(feature_names, feats)},
+        })
+
+    # global feature importance from the booster (gain)
+    raw_imp = booster.feature_importance(importance_type="gain")
+    total = float(sum(raw_imp)) or 1.0
+    feature_importance = [
+        {"name": n, "importance": float(v), "share": float(v) / total}
+        for n, v in zip(feature_names, raw_imp)
+    ]
+    feature_importance.sort(key=lambda x: -x["share"])
+
+    return {"top100": top100, "feature_importance": feature_importance}
+
 
 def _build_result(cid: int, score: float, pre_rank: int = None):
     c = meta_idx.loc[cid]
@@ -253,6 +291,15 @@ def search_text(q: str, top_k: int = DEFAULT_TOP_K, rerank: bool = True):
         query=q, mode="text", rerank=rerank, top_k=top_k,
         latency_ms=round(dt, 1), results=results,
     )
+
+@app.get("/search/explain")
+def search_explain(q: str):
+    if not q or not q.strip():
+        raise HTTPException(400, "empty query")
+    raw_vec, proj_vec = encode_text(q)
+    q_meta = {"caption": q}
+    diag = explain_text_search(proj_vec, raw_vec, q_meta, candidates_k=100)
+    return {"query": q, **diag}
 
 
 @app.post("/search/image", response_model=SearchResponse)
