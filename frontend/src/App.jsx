@@ -37,13 +37,7 @@ function ThemeToggle({ theme, setTheme }) {
   return (
     <div className="inline-flex border border-app rounded-md overflow-hidden text-[11px]">
       {options.map((o) => (
-        <button
-          key={o.v}
-          onClick={() => setTheme(o.v)}
-          className={`px-2.5 py-1 transition ${theme === o.v ? "bg-accent text-accent-fg" : "text-muted hover:text-app"}`}
-        >
-          {o.label}
-        </button>
+        <button key={o.v} onClick={() => setTheme(o.v)} className={`px-2.5 py-1 transition ${theme === o.v ? "bg-accent text-accent-fg" : "text-muted hover:text-app"}`}>{o.label}</button>
       ))}
     </div>
   );
@@ -55,23 +49,15 @@ function RankDelta({ pre, post }) {
   if (delta === 0) return <span className="text-[10px] text-subtle">rank {post}</span>;
   const moved = delta > 0;
   return (
-    <span
-      className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${moved ? "bg-positive-soft" : "bg-negative-soft"}`}
-      title={moved ? `moved up ${delta} positions` : `moved down ${-delta} positions`}
-    >
-      {moved ? "↑" : "↓"} {Math.abs(delta)}
-      <span className="text-subtle">·</span>
-      <span>{pre}→{post}</span>
+    <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${moved ? "bg-positive-soft" : "bg-negative-soft"}`} title={moved ? `moved up ${delta} positions` : `moved down ${-delta} positions`}>
+      {moved ? "↑" : "↓"} {Math.abs(delta)}<span className="text-subtle">·</span><span>{pre}→{post}</span>
     </span>
   );
 }
 
 function ResultCard({ r, index }) {
   return (
-    <article
-      className="bg-card border border-app rounded-lg overflow-hidden hover:border-strong transition-all card-fade-in"
-      style={{ animationDelay: `${index * 18}ms` }}
-    >
+    <article className="bg-card border border-app rounded-lg overflow-hidden hover:border-strong transition-all card-fade-in" style={{ animationDelay: `${index * 18}ms` }}>
       <div className="aspect-[3/4] bg-elev overflow-hidden">
         <img src={`/${r.image_path}`} alt={r.productDisplayName} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 hover:scale-[1.03]" />
       </div>
@@ -139,7 +125,6 @@ function ComparisonView({ results }) {
     });
     return { promoted, demoted, unchanged };
   }, [postOrder]);
-
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-4 text-[11px] text-muted">
@@ -190,7 +175,6 @@ function Histogram({ values, bins = 20 }) {
     const maxCount = Math.max(...counts);
     return { counts, min, max, maxCount };
   }, [values, bins]);
-
   if (!data) return null;
   return (
     <div>
@@ -219,31 +203,26 @@ function InsightPanel({ insight, loading }) {
     );
   }
   if (!insight) return null;
-
   const projSims = insight.top100.map((r) => r.features.proj_sim);
   const baseSims = insight.top100.map((r) => r.features.base_sim);
   const top = insight.top100[0];
-
   return (
     <div className="border border-app rounded-lg bg-card mb-6 overflow-hidden">
       <div className="px-4 py-2.5 border-b border-app flex items-center justify-between">
         <div className="text-[11px] uppercase tracking-wider text-subtle">ml inspector</div>
         <div className="text-[10px] text-subtle">stage-1 retrieved 100 candidates from 44,419 products</div>
       </div>
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-app">
         <div className="p-4 space-y-2">
           <div className="text-[11px] font-medium text-app">projected similarity (trained heads)</div>
           <Histogram values={projSims} />
           <div className="text-[10px] text-muted">distribution across top-100. higher = stronger semantic match in trained embedding space.</div>
         </div>
-
         <div className="p-4 space-y-2">
           <div className="text-[11px] font-medium text-app">base similarity (frozen clip)</div>
           <Histogram values={baseSims} />
           <div className="text-[10px] text-muted">same candidates, vanilla clip cosine. compare spread vs trained — wider = more separation learned.</div>
         </div>
-
         <div className="p-4 space-y-2">
           <div className="text-[11px] font-medium text-app">top result features</div>
           {top ? (
@@ -261,7 +240,6 @@ function InsightPanel({ insight, loading }) {
           ) : <div className="text-[10px] text-subtle">no top result</div>}
         </div>
       </div>
-
       <div className="px-4 py-3 border-t border-app bg-elev">
         <div className="text-[11px] font-medium text-app mb-2">global feature importance (lightgbm gain)</div>
         <div className="space-y-1">
@@ -275,6 +253,82 @@ function InsightPanel({ insight, loading }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function FilterChips({ label, values, selected, onChange }) {
+  if (!values.length) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-[10px] uppercase tracking-wider text-subtle w-14 shrink-0">{label}</span>
+      {values.map(({ v, count }) => {
+        const active = selected.includes(v);
+        return (
+          <button
+            key={v}
+            onClick={() => onChange(v)}
+            className={`px-2 py-0.5 text-[11px] rounded border transition ${
+              active
+                ? "bg-accent text-accent-fg border-strong"
+                : "bg-card text-muted border-app hover:text-app hover:border-strong"
+            }`}
+          >
+            {v} <span className="opacity-60 tabular-nums">({count})</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function FilterBar({ results, filters, setFilters, filteredCount }) {
+  const facets = useMemo(() => {
+    const count = (key) => {
+      const m = new Map();
+      for (const r of results) {
+        const k = r[key];
+        if (!k) continue;
+        m.set(k, (m.get(k) || 0) + 1);
+      }
+      return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([v, count]) => ({ v, count }));
+    };
+    return {
+      gender: count("gender"),
+      articleType: count("articleType").slice(0, 10),
+      baseColour: count("baseColour").slice(0, 10),
+    };
+  }, [results]);
+
+  const toggle = (key, v) => {
+    setFilters((f) => {
+      const cur = f[key];
+      return { ...f, [key]: cur.includes(v) ? cur.filter((x) => x !== v) : [...cur, v] };
+    });
+  };
+
+  const anyActive = filters.gender.length + filters.articleType.length + filters.baseColour.length > 0;
+
+  return (
+    <div className="border border-app rounded-lg bg-card mb-4 overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-app flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="text-[11px] uppercase tracking-wider text-subtle">filters</div>
+          <div className="text-[10px] text-muted">
+            {anyActive ? `${filteredCount} of ${results.length} match` : `${results.length} retrieved`}
+          </div>
+        </div>
+        {anyActive && (
+          <button onClick={() => setFilters({ gender: [], articleType: [], baseColour: [] })} className="text-[11px] text-muted hover:text-app transition">
+            clear all
+          </button>
+        )}
+      </div>
+      <div className="px-4 py-3 space-y-2">
+        <FilterChips label="gender"  values={facets.gender}      selected={filters.gender}      onChange={(v) => toggle("gender", v)} />
+        <FilterChips label="type"    values={facets.articleType} selected={filters.articleType} onChange={(v) => toggle("articleType", v)} />
+        <FilterChips label="colour"  values={facets.baseColour}  selected={filters.baseColour}  onChange={(v) => toggle("baseColour", v)} />
       </div>
     </div>
   );
@@ -297,7 +351,18 @@ export default function App() {
   const [inspectMode, setInspectMode] = useState(false);
   const [insight, setInsight] = useState(null);
   const [insightLoading, setInsightLoading] = useState(false);
+  const [filters, setFilters] = useState({ gender: [], articleType: [], baseColour: [] });
   const fileInputRef = useRef(null);
+
+  const filteredResults = useMemo(() => {
+    const anyActive = filters.gender.length + filters.articleType.length + filters.baseColour.length > 0;
+    if (!anyActive) return results;
+    return results.filter((r) =>
+      (filters.gender.length === 0 || filters.gender.includes(r.gender)) &&
+      (filters.articleType.length === 0 || filters.articleType.includes(r.articleType)) &&
+      (filters.baseColour.length === 0 || filters.baseColour.includes(r.baseColour))
+    );
+  }, [results, filters]);
 
   async function fetchInsight(q) {
     if (!inspectMode) return;
@@ -307,43 +372,27 @@ export default function App() {
       if (!r.ok) throw new Error(`http ${r.status}`);
       const data = await r.json();
       setInsight(data);
-    } catch {
-      setInsight(null);
-    } finally {
-      setInsightLoading(false);
-    }
+    } catch { setInsight(null); } finally { setInsightLoading(false); }
   }
 
   async function runTextSearch(q) {
     if (!q || !q.trim()) return;
-    setLoading(true);
-    setError(null);
-    setUploadedPreview(null);
+    setLoading(true); setError(null); setUploadedPreview(null); setFilters({ gender: [], articleType: [], baseColour: [] });
     try {
       const useRerank = compareMode ? true : rerank;
       const r = await fetch(`/api/search/text?q=${encodeURIComponent(q)}&top_k=${topK}&rerank=${useRerank}`);
       if (!r.ok) throw new Error(`http ${r.status}`);
       const data = await r.json();
       setResults(data.results || []);
-      setMode("text");
-      setActiveQuery(q);
-      setLatency(data.latency_ms);
-      if (inspectMode) fetchInsight(q);
-      else setInsight(null);
-    } catch (e) {
-      setError(e.message);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
+      setMode("text"); setActiveQuery(q); setLatency(data.latency_ms);
+      if (inspectMode) fetchInsight(q); else setInsight(null);
+    } catch (e) { setError(e.message); setResults([]); } finally { setLoading(false); }
   }
 
   async function runImageSearch(file) {
     if (!file) return;
-    setLoading(true);
-    setError(null);
+    setLoading(true); setError(null); setInsight(null); setFilters({ gender: [], articleType: [], baseColour: [] });
     setUploadedPreview(URL.createObjectURL(file));
-    setInsight(null); // explain endpoint is text-only for now
     try {
       const form = new FormData();
       form.append("image", file);
@@ -353,23 +402,17 @@ export default function App() {
       if (!r.ok) throw new Error(`http ${r.status}`);
       const data = await r.json();
       setResults(data.results || []);
-      setMode("image");
-      setActiveQuery(file.name);
-      setLatency(data.latency_ms);
-    } catch (e) {
-      setError(e.message);
-      setResults([]);
-    } finally {
-      setLoading(false);
-    }
+      setMode("image"); setActiveQuery(file.name); setLatency(data.latency_ms);
+    } catch (e) { setError(e.message); setResults([]); } finally { setLoading(false); }
   }
 
-  // when inspect mode flips on after a search, fetch insight retroactively
   useEffect(() => {
     if (inspectMode && mode === "text" && activeQuery && !insight) fetchInsight(activeQuery);
     if (!inspectMode) setInsight(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inspectMode]);
+
+  const sparse = filteredResults.length > 0 && filteredResults.length < Math.min(5, results.length);
 
   return (
     <div className="min-h-screen bg-app text-app flex flex-col">
@@ -464,8 +507,12 @@ export default function App() {
         {inspectMode && mode === "text" && <InsightPanel insight={insight} loading={insightLoading} />}
         {inspectMode && mode === "image" && (
           <div className="border border-app rounded-lg p-4 bg-card mb-6 text-[11px] text-muted">
-            inspector currently supports text queries only. image-query feature breakdown will look different (caption_overlap is always 0 for image queries).
+            inspector currently supports text queries only.
           </div>
+        )}
+
+        {!loading && !error && results.length > 0 && !compareMode && (
+          <FilterBar results={results} filters={filters} setFilters={setFilters} filteredCount={filteredResults.length} />
         )}
 
         {loading && !compareMode && (
@@ -482,9 +529,19 @@ export default function App() {
 
         {!loading && !error && results.length > 0 && compareMode && <ComparisonView results={results} />}
         {!loading && !error && results.length > 0 && !compareMode && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
-            {results.map((r, i) => <ResultCard key={`${r.id}-${i}`} r={r} index={i} />)}
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+              {filteredResults.map((r, i) => <ResultCard key={`${r.id}-${i}`} r={r} index={i} />)}
+            </div>
+            {sparse && (
+              <div className="mt-6 text-[11px] text-muted border border-dashed border-app rounded-md px-3 py-2">
+                only {filteredResults.length} of {results.length} retrieved items match these filters. try increasing top-k in advanced, or loosen filters.
+              </div>
+            )}
+            {filteredResults.length === 0 && (
+              <div className="text-sm text-muted">no items match these filters. <button onClick={() => setFilters({ gender: [], articleType: [], baseColour: [] })} className="underline hover:text-app">clear filters</button>.</div>
+            )}
+          </>
         )}
 
         {!loading && !error && !mode && <EmptyState />}
